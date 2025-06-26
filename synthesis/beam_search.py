@@ -39,6 +39,44 @@ class BeamSynthesiser:
         self.beam_width = beam_width
         self.expr_cache: Dict[str, np.ndarray] = {}
 
+        # ---- Mine existing model for constants/expressions ----
+        try:
+            import joblib  # type: ignore
+            from calculate import calculate_reimbursement  # noqa: F401
+
+            state = joblib.load('model_state.pkl')
+            surrogate_tree = state['surrogate_tree']
+            formulas = state['formulas']
+            final_formula_features = state['final_formula_features']
+
+            # thresholds used in tree splits -> add as Consts later
+            self.mined_thresholds = [round(t, 2) for t in surrogate_tree.threshold if t > 0]
+
+            # leaf-level expressions
+            self.mined_leaf_stmts: List[ReturnStmt] = []
+            for leaf_id, obj in formulas.items():
+                if isinstance(obj, float):
+                    self.mined_leaf_stmts.append(ReturnStmt(Const(round(obj, 2))))
+                else:
+                    # assume sklearn Pipeline(poly,ridge)
+                    ridge = obj.named_steps['ridge']
+                    coefs = ridge.coef_
+                    intercept = ridge.intercept_
+                    # build expression: intercept + sum(coef_i * var_i)
+                    expr: Expr = Const(round(intercept, 2))
+                    for w, feat_name in zip(coefs, final_formula_features):
+                        if abs(w) < 1e-4:
+                            continue
+                        term_expr = Var(feat_name) if feat_name in VAR_NAMES else None
+                        if term_expr is None:
+                            continue
+                        expr = Binary('+', expr, Scale('*', term_expr, round(float(w), 2)))
+                    self.mined_leaf_stmts.append(ReturnStmt(expr))
+        except Exception as e:
+            print('[Beam] mining failed', e)
+            self.mined_thresholds = []
+            self.mined_leaf_stmts = []
+
     # ---------------- expression evaluation -----------------
     def eval_expr(self, e: Expr) -> np.ndarray:
         key = str(e)
@@ -96,10 +134,18 @@ class BeamSynthesiser:
 
     # -----------------------------------------------------------------
     def initial_beam(self) -> List[Candidate]:
-        terms = generate_terms()
+        # Include mined constants
+        extra_consts = [Const(c) for c in self.mined_thresholds]
+        terms = generate_terms() + extra_consts
         candidates: List[Candidate] = []
         for t in terms:
             stmt = ReturnStmt(t)
+            out = self.eval_stmt(stmt)
+            err = self.mae(out)
+            candidates.append(Candidate(stmt, out, err))
+
+        # seed with mined leaf expressions
+        for stmt in self.mined_leaf_stmts:
             out = self.eval_stmt(stmt)
             err = self.mae(out)
             candidates.append(Candidate(stmt, out, err))
