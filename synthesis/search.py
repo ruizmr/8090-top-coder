@@ -213,23 +213,54 @@ def combine_round(exprs: List[Expr]) -> Iterator[Expr]:
             yield Round(e, p)
 
 
+COMMUTATIVE_OPS = {'+', 'max', 'min'}
+
+
 def enumerate_exprs(max_size: int) -> List[Expr]:
-    """Enumerate expressions up to given size (inclusive)."""
-    memo: Dict[int, List[Expr]] = {}
-    memo[1] = generate_terms()
+    """Enumerate all unique expressions whose AST size ≤ max_size."""
+    # Dynamic programming: build lists per size.
+    memo: Dict[int, List[Expr]] = {1: generate_terms()}
+
+    # Helper to avoid generating obvious duplicates for commutative ops
+    def should_emit_binary(op: str, left: Expr, right: Expr) -> bool:
+        if op in COMMUTATIVE_OPS:
+            # Use string ordering as proxy for structural ordering
+            return str(left) <= str(right)
+        return True
+
+    for size in range(2, max_size + 1):
+        current: List[Expr] = []
+
+        # Scale and Round constructions: 1 (root) + child_size = size
+        child_size = size - 1
+        if child_size in memo:
+            for expr in memo[child_size]:
+                # scale operations
+                for op in ['*', '/']:
+                    for k in MULTIPLIERS:
+                        current.append(Scale(op, expr, k))
+                # round operations
+                for p in ROUND_P:
+                    current.append(Round(expr, p))
+
+        # Binary constructions: 1 (root) + left_size + right_size = size
+        for left_size in range(1, size - 1):
+            right_size = size - 1 - left_size
+            if right_size < 1:
+                continue
+            for left_expr in memo[left_size]:
+                for right_expr in memo[right_size]:
+                    for op in ['+', '-', 'max', 'min']:
+                        if should_emit_binary(op, left_expr, right_expr):
+                            current.append(Binary(op, left_expr, right_expr))
+
+        memo[size] = current
+
+    # Aggregate all expressions up to max_size
     all_exprs: List[Expr] = []
-    for size in range(1, max_size + 1):
-        if size in memo:
-            all_exprs.extend(memo[size])
-        if size == max_size:
-            continue
-        next_size = []
-        # Build new expressions with binary ops and scale/round
-        for s1 in range(1, size + 1):
-            s2 = size + 1 - s1  # target child sizes add to size_new - 1 maybe but adjust later
-        # We'll build at end
-    # TODO: refine enumeration logic
-    return all_exprs  # placeholder
+    for s in range(1, max_size + 1):
+        all_exprs.extend(memo.get(s, []))
+    return all_exprs
 
 
 # ---------------- Program enumeration (placeholder) ---------------- #
