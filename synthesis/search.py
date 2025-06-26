@@ -267,12 +267,10 @@ def enumerate_exprs(max_size: int) -> List[Expr]:
 
 
 def main():
-    print("Search framework skeleton loaded. TODO: implement enumeration.")
+    print("== Synthesiser starting ==")
 
-    # Load public cases just to ensure file path ok
-    with open('public_cases.json', 'r') as f:
-        data = json.load(f)
-    print(f"Loaded {len(data)} public cases.")
+    # Quick smoke-test run with small limits
+    cegis_search(max_size=5, max_depth=3, initial_limit=50)
 
 
 # ---------------- Predicate enumeration ---------------- #
@@ -351,6 +349,85 @@ def enumerate_statements(
                                 for e_stmt in else_stmts:
                                     add_stmt(size, depth_if, IfStmt(pred, t_stmt, e_stmt))
     return stmt_memo
+
+
+# ---------------- CEGIS Search ---------------- #
+
+
+Case = Tuple[int, int, float, float]  # (d, m, r, expected)
+
+
+def load_public_cases(limit: Optional[int] = None) -> List[Case]:
+    """Return list of (d, m, r, expected). Optionally limit for quick test."""
+    with open('public_cases.json', 'r') as f:
+        raw = json.load(f)
+    cases: List[Case] = []
+    for entry in raw[: limit]:
+        inp = entry['input']
+        exp = float(entry['expected_output'])
+        cases.append((int(inp['trip_duration_days']), int(inp['miles_traveled']), float(inp['total_receipts_amount']), exp))
+    return cases
+
+
+def evaluate_program(prog: Stmt, cases: List[Case]) -> float:
+    """Return max absolute error across cases."""
+    max_err = 0.0
+    for d, m, r, exp in cases:
+        pred = prog.eval({'d': d, 'm': m, 'r': r})
+        err = abs(pred - exp)
+        if err > max_err:
+            max_err = err
+            # early exit if impossible to meet 0.01 threshold
+            if max_err > 0.01:
+                return max_err
+    return max_err
+
+
+def cegis_search(max_size: int = 8, max_depth: int = 4, initial_limit: int = 200):
+    """Simplified CEGIS: search sequentially."""
+    print(f"[CEGIS] Enumerating up to size={max_size}, depth={max_depth}")
+
+    # Enumerate expressions once
+    exprs_all = enumerate_exprs(max_size)
+    expr_by_size: Dict[int, List[Expr]] = {}
+    for e in exprs_all:
+        expr_by_size.setdefault(e.size(), []).append(e)
+
+    # Predicates
+    pred_by_size = enumerate_preds(max_size, expr_by_size)
+
+    # Statements
+    stmt_by_size_depth = enumerate_statements(max_size, max_depth, expr_by_size, pred_by_size)
+
+    # Flatten candidates ordered by (size, depth)
+    candidates: List[Stmt] = []
+    for size in range(2, max_size + 1):
+        for depth in range(1, max_depth + 1):
+            candidates.extend(stmt_by_size_depth.get((size, depth), []))
+
+    print(f"[CEGIS] Generated {len(candidates)} candidate programs (pre-dedup)")
+
+    # Deduplicate by string representation
+    unique_prog: Dict[str, Stmt] = {}
+    for c in candidates:
+        key = str(c)
+        if key not in unique_prog:
+            unique_prog[key] = c
+    print(f"[CEGIS] {len(unique_prog)} unique candidate programs to test")
+
+    cases = load_public_cases(limit=initial_limit)
+
+    for idx, prog in enumerate(unique_prog.values(), 1):
+        if idx % 1000 == 0:
+            print(f"  Tested {idx}/{len(unique_prog)} candidates...")
+        max_err = evaluate_program(prog, cases)
+        if max_err < 0.01:
+            print("[CEGIS] Found perfect candidate on subset. Rendering:")
+            print(str(prog))
+            return prog
+
+    print("[CEGIS] No candidate found within current bounds.")
+    return None
 
 
 if __name__ == '__main__':
