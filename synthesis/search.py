@@ -275,5 +275,83 @@ def main():
     print(f"Loaded {len(data)} public cases.")
 
 
+# ---------------- Predicate enumeration ---------------- #
+
+
+def enumerate_preds(max_size: int, expr_by_size: Dict[int, List[Expr]]) -> Dict[int, List[Pred]]:
+    """Return mapping size -> list of predicates with that size (≤ max_size)."""
+    pred_memo: Dict[int, List[Pred]] = {}
+    for size in range(3, max_size + 1):  # minimum size 3: 1 node + 1+1 exprs
+        preds_curr: List[Pred] = []
+        # allocate sizes to left and right exprs such that 1 + left + right = size
+        for left_size in range(1, size - 1):
+            right_size = size - 1 - left_size
+            if right_size < 1:
+                continue
+            for left_expr in expr_by_size.get(left_size, []):
+                for right_expr in expr_by_size.get(right_size, []):
+                    for op in COMP_OPS.keys():
+                        # skip trivial predicate equality duplicates when commutative
+                        if op == '==' and str(left_expr) > str(right_expr):
+                            continue
+                        preds_curr.append(Pred(left_expr, op, right_expr))
+        if preds_curr:
+            pred_memo[size] = preds_curr
+    return pred_memo
+
+
+# ---------------- Statement enumeration ---------------- #
+
+
+def enumerate_statements(
+    max_size: int,
+    max_depth: int,
+    expr_by_size: Dict[int, List[Expr]],
+    pred_by_size: Dict[int, List[Pred]],
+) -> Dict[Tuple[int, int], List[Stmt]]:
+    """Return mapping (size, depth) -> list of statements."""
+    # Depth definition: Return = 1, If = 1 + max(depth_then, depth_else)
+    stmt_memo: Dict[Tuple[int, int], List[Stmt]] = {}
+
+    # Helper to add stmt to memo
+    def add_stmt(size: int, depth: int, stmt: Stmt):
+        key = (size, depth)
+        stmt_memo.setdefault(key, []).append(stmt)
+
+    # Handle Return statements
+    for expr_size in range(1, max_size):
+        for expr in expr_by_size.get(expr_size, []):
+            total_size = 1 + expr_size
+            if total_size <= max_size:
+                add_stmt(total_size, 1, ReturnStmt(expr))
+
+    # Iteratively build If statements by increasing total size
+    for size in range(1, max_size + 1):
+        for pred_size, pred_list in pred_by_size.items():
+            if pred_size >= size:
+                continue
+            remaining_size = size - 1 - pred_size
+            # Allocate remaining size between then and else stmts
+            for then_size in range(1, remaining_size):
+                else_size = remaining_size - then_size
+                # Enumerate possible depths as well
+                for depth_then in range(1, max_depth):
+                    for depth_else in range(1, max_depth):
+                        depth_if = 1 + max(depth_then, depth_else)
+                        if depth_if > max_depth:
+                            continue
+                        # Get stmt lists for then and else matching (size, depth)
+                        then_stmts = stmt_memo.get((then_size, depth_then), [])
+                        else_stmts = stmt_memo.get((else_size, depth_else), [])
+                        if not then_stmts or not else_stmts:
+                            continue
+                        # Combine
+                        for pred in pred_list:
+                            for t_stmt in then_stmts:
+                                for e_stmt in else_stmts:
+                                    add_stmt(size, depth_if, IfStmt(pred, t_stmt, e_stmt))
+    return stmt_memo
+
+
 if __name__ == '__main__':
     main()
