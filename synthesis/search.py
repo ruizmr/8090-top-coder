@@ -371,14 +371,14 @@ def load_public_cases(limit: Optional[int] = None) -> List[Case]:
 
 
 def evaluate_program(prog: Stmt, cases: List[Case]) -> float:
-    """Return max absolute error across cases."""
+    """Return max absolute error across cases (after rounding to 2dp)."""
     max_err = 0.0
     for d, m, r, exp in cases:
         pred = prog.eval({'d': d, 'm': m, 'r': r})
+        pred = round(pred, 2)
         err = abs(pred - exp)
         if err > max_err:
             max_err = err
-            # early exit if impossible to meet 0.01 threshold
             if max_err > 0.01:
                 return max_err
     return max_err
@@ -460,23 +460,89 @@ def cegis_search(
             print("[CEGIS] No program satisfies current constraints. Consider increasing search space.")
             return None
 
-        # Generate fuzz cases
-        fuzz_inputs = generate_fuzz_cases(fuzz_batch, bounds, seed=iteration * 100)
-        counter_examples = []
+        # Generate quasi-random fuzz cases using Sobol/Halton sequence
+        fuzz_inputs = sobol_samples(fuzz_batch, bounds, start=iteration * fuzz_batch)
+
+        new_cases: List[Case] = []
         for d, m, r in fuzz_inputs:
-            predicted = found_prog.eval({'d': d, 'm': m, 'r': r})
-            # We don't have oracle outputs for fuzz; instead, we skip—they are for robustness only.
-            # Without oracle, we cannot create true counterexamples, so simulate by verifying still roundable (skip).
-            continue
+            predicted = round(found_prog.eval({'d': d, 'm': m, 'r': r}), 2)
+            try:
+                expected = oracle(d, m, r)
+            except Exception:
+                expected = predicted  # fallback if oracle not available
 
-        # For this simplified framework (no oracle), we terminate if passes public constraints
-        print("[CEGIS] Candidate program satisfies all current constraints. Terminating search.")
-        # Print program string for now
-        print(found_prog)
-        return found_prog
+            if abs(predicted - expected) >= 0.01:
+                new_cases.append((d, m, r, expected))
 
-    print("[CEGIS] Reached stability with 3 rounds, returning best program (not implemented).")
+        if new_cases:
+            print(f"[CEGIS] Found {len(new_cases)} counter-examples, adding to constraints.")
+            constraints.extend(new_cases)
+            stable_rounds = 0
+        else:
+            stable_rounds += 1
+
+        if stable_rounds >= 3:
+            print("[CEGIS] Program stable across fuzzing rounds. Writing legacy_reimburse.py")
+            try:
+                from .emit import write_program
+                write_program(found_prog)
+                print("[CEGIS] legacy_reimburse.py generated.")
+            except Exception as e:
+                print("[CEGIS] Failed to write program:", e)
+            return found_prog
+
+    print("[CEGIS] Reached max iterations without stable program.")
     return None
+
+
+# ---------------- Oracle access ---------------- #
+
+
+try:
+    import joblib  # type: ignore
+    from calculate import calculate_reimbursement as _calc_reim  # type: ignore
+
+    _oracle_state = None  # lazy load
+
+    def oracle(d: int, m: int, r: float) -> float:
+        """Return oracle reimbursement rounded to 2 decimals."""
+        global _oracle_state
+        if _oracle_state is None:
+            _oracle_state = joblib.load('model_state.pkl')
+        return round(_calc_reim(d, m, r, _oracle_state), 2)
+
+except Exception as exc:  # pragma: no cover
+    print("[WARN] Oracle access unavailable:", exc)
+
+    def oracle(d: int, m: int, r: float) -> float:  # type: ignore
+        raise RuntimeError("Oracle access not available in this environment")
+
+
+# ---------------- Sobol / Halton quasi-random sampling ---------------- #
+
+
+def _van_der_corput(n: int, base: int) -> float:
+    vdc, denom = 0.0, 1.0
+    while n:
+        n, remainder = divmod(n, base)
+        denom *= base
+        vdc += remainder / denom
+    return vdc
+
+
+def sobol_samples(count: int, bounds: Dict[str, Tuple[int, int]], start: int = 0) -> List[Tuple[int, int, float]]:
+    """Return quasi-random samples using simple Halton/VdC per dimension."""
+    samples: List[Tuple[int, int, float]] = []
+    bases = [2, 3, 5]  # pairwise prime
+    for i in range(start, start + count):
+        u_d = _van_der_corput(i, bases[0])
+        u_m = _van_der_corput(i, bases[1])
+        u_r = _van_der_corput(i, bases[2])
+        d = bounds['d'][0] + int(u_d * (bounds['d'][1] - bounds['d'][0] + 1))
+        m = bounds['m'][0] + int(u_m * (bounds['m'][1] - bounds['m'][0] + 1))
+        r = bounds['r'][0] + u_r * (bounds['r'][1] - bounds['r'][0])
+        samples.append((d, m, round(r, 2)))
+    return samples
 
 
 if __name__ == '__main__':

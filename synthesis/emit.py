@@ -1,5 +1,4 @@
 from typing import Any
-from textwrap import indent
 
 # Import Stmt, IfStmt, ReturnStmt, Expr, Binary, Scale, Round, Const, Var, Pred from search module
 from .search import Stmt, IfStmt, ReturnStmt, Expr, Binary, Scale, Round, Const, Var, Pred
@@ -26,7 +25,7 @@ def _render_expr(expr: Expr) -> str:
 def _render_stmt(stmt: Stmt, level: int = 1) -> str:
     indent_str = '    ' * level
     if isinstance(stmt, ReturnStmt):
-        return indent_str + f"return {_render_expr(stmt.expr)}" + "\n"
+        return indent_str + f"return round({_render_expr(stmt.expr)}, 2)" + "\n"
     if isinstance(stmt, IfStmt):
         pred = stmt.pred
         pred_str = f"{_render_expr(pred.left)} {pred.op} {_render_expr(pred.right)}"
