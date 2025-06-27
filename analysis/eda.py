@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt  # type: ignore
 
 DATA_FILE = Path(__file__).resolve().parent.parent / 'public_cases.json'

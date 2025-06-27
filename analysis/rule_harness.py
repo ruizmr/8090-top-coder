@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 DATA_FILE = Path(__file__).resolve().parent.parent / 'public_cases.json'
 
@@ -35,7 +35,7 @@ def load_df() -> pd.DataFrame:
 def analyze_per_diem(df: pd.DataFrame) -> pd.DataFrame:
     """Return mean reimbursement per day for day buckets."""
     bins = pd.cut(df["days"], bins=[0, 4, 5, 8, np.inf], labels=["1-4", "5", "6-8", "9+"])
-    summary = df.groupby(bins)["per_day"].agg(["count", "mean", "std"])  # type: ignore[return-value]
+    summary: pd.DataFrame = df.groupby(bins)["per_day"].agg(["count", "mean", "std"])  # type: ignore[assignment]
     return summary
 
 
@@ -45,7 +45,7 @@ def analyze_mileage_tiers(df: pd.DataFrame) -> pd.DataFrame:
         bins=[-1, 100, 275, 916, np.inf],
         labels=["0-100", "101-275", "276-916", "917+"]
     )
-    summary = df.groupby(tiers)["per_mile"].agg(["count", "mean", "std"])  # type: ignore[return-value]
+    summary: pd.DataFrame = df.groupby(tiers)["per_mile"].agg(["count", "mean", "std"])  # type: ignore[assignment]
     return summary
 
 
@@ -55,7 +55,7 @@ def analyze_efficiency(df: pd.DataFrame) -> pd.DataFrame:
         bins=[-np.inf, 100, 180, 220, 300, np.inf],
         labels=["<100", "100-179", "180-220", "221-300", ">300"]
     )
-    summary = df.groupby(eff_bins)["reimb"].agg(["count", "mean", "std"])  # type: ignore[return-value]
+    summary: pd.DataFrame = df.groupby(eff_bins)["reimb"].agg(["count", "mean", "std"])  # type: ignore[assignment]
     return summary
 
 
@@ -65,7 +65,7 @@ def analyze_receipts(df: pd.DataFrame) -> pd.DataFrame:
         bins=[-1, 50, 600, 800, 1000, np.inf],
         labels=["<50", "50-599", "600-799", "800-999", "1000+"]
     )
-    summary = df.groupby(bins)["reimb"].agg(["count", "mean", "std"])  # type: ignore[return-value]
+    summary: pd.DataFrame = df.groupby(bins)["reimb"].agg(["count", "mean", "std"])  # type: ignore[assignment]
     return summary
 
 
