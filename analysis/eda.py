@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, cast
+from numpy.typing import NDArray
 
 import numpy as np
 import pandas as pd
@@ -60,23 +61,25 @@ def heatmap(df: pd.DataFrame, x: str, y: str, bins: Tuple[int, int] = (60, 60), 
     plt.close()
 
 
-def candidate_breakpoints(values: np.ndarray, metric: np.ndarray, num_breaks: int = 5) -> List[int]:
+def candidate_breakpoints(values: NDArray[np.floating], metric: NDArray[np.floating], num_breaks: int = 5) -> List[int]:
     """Return candidate breakpoint positions where the slope of metric over values changes sharply.
 
     Simple heuristic: compute first derivative and pick the top-k points where derivative magnitude is high.
     """
-    order = np.argsort(values)
-    v_sorted = values[order]
-    m_sorted = metric[order]
+    order: NDArray[np.int_] = np.argsort(values)
+    v_sorted: NDArray[np.floating] = values[order]
+    m_sorted: NDArray[np.floating] = metric[order]
     # Finite differences on a smoothed curve (rolling mean)
     window = 20  # smooth window
     if len(v_sorted) < window * 2:
         return []
-    smooth = pd.Series(m_sorted).rolling(window, center=True, min_periods=1).mean().values
-    deriv = np.diff(smooth) / np.diff(v_sorted)
+    smooth_series: pd.Series = pd.Series(m_sorted)
+    rolling_mean = cast(pd.Series, smooth_series.rolling(window, center=True, min_periods=1).mean())
+    smooth_arr: NDArray[np.floating] = cast(NDArray[np.floating], rolling_mean.to_numpy(dtype=float))  # type: ignore[attr-defined]
+    deriv: NDArray[np.floating] = np.diff(smooth_arr) / np.diff(v_sorted)
     # Take absolute derivative and find top peaks, avoiding edges
-    peak_idx = np.argpartition(-np.abs(deriv), num_breaks)[:num_breaks]
-    candidate_vals = v_sorted[peak_idx + 1]  # +1 due to diff shift
+    peak_idx: NDArray[np.int_] = np.argpartition(-np.abs(deriv), num_breaks)[:num_breaks]
+    candidate_vals: NDArray[np.floating] = v_sorted[peak_idx + 1]  # +1 due to diff shift
     # Deduplicate & sort
     return sorted(set(int(round(v)) for v in candidate_vals))
 
@@ -95,8 +98,8 @@ def main():
     heatmap(df, 'days', 'reimbursement', fname='heat_days_vs_reimb.png')
 
     # Breakpoint analysis for mileage tiers
-    mileage_breaks = candidate_breakpoints(df['miles'].values, df['reimb_per_mile'].values)
-    per_diem_breaks = candidate_breakpoints(df['days'].values, df['reimb_per_day'].values)
+    mileage_breaks = candidate_breakpoints(df['miles'].to_numpy(dtype=float), df['reimb_per_mile'].to_numpy(dtype=float))
+    per_diem_breaks = candidate_breakpoints(df['days'].to_numpy(dtype=float), df['reimb_per_day'].to_numpy(dtype=float))
 
     print("\nCandidate mileage tier breakpoints:", mileage_breaks)
     print("Candidate per-diem (days) breakpoints:", per_diem_breaks)
