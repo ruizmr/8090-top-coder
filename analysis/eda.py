@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
 
 DATA_FILE = Path(__file__).resolve().parent.parent / 'public_cases.json'
 FIG_DIR = Path(__file__).resolve().parent / 'figs'
@@ -33,7 +33,7 @@ def load_cases(path: Path) -> pd.DataFrame:
     return df
 
 
-def scatter(df: pd.DataFrame, x: str, y: str, color: str = None, fname: Optional[str] = None):
+def scatter(df: pd.DataFrame, x: str, y: str, color: str | None = None, fname: Optional[str] = None) -> None:
     plt.figure(figsize=(6, 4))
     if color and color in df.columns:
         plt.scatter(df[x], df[y], c=df[color], cmap='viridis', s=10, alpha=0.6)
@@ -48,7 +48,7 @@ def scatter(df: pd.DataFrame, x: str, y: str, color: str = None, fname: Optional
     plt.close()
 
 
-def heatmap(df: pd.DataFrame, x: str, y: str, bins: Tuple[int, int] = (60, 60), fname: Optional[str] = None):
+def heatmap(df: pd.DataFrame, x: str, y: str, bins: Tuple[int, int] = (60, 60), fname: Optional[str] = None) -> None:
     plt.figure(figsize=(6, 4))
     plt.hist2d(df[x], df[y], bins=bins, cmap='plasma')
     plt.xlabel(x)
