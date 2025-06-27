@@ -41,7 +41,28 @@ def legacy_reimburse(d: int, m: int, r: float) -> float:
     if remaining > 0:
         mileage += remaining * 0.35  # slight rebound in rate for very long drives
 
-    total = per_diem + mileage
+    # --- Receipt adjustment (diminishing returns) ---
+    if r < 50:
+        receipt_adj = -10  # discourage tiny receipts
+    else:
+        base = min(r, 800)
+        extra = max(0, r - 800)
+        receipt_adj = base * 0.8 + extra * 0.25
+
+    # Magic cents bump
+    cents = int(round(r * 100)) % 100
+    if cents in (49, 99):
+        receipt_adj += 2
+
+    # Aggregate
+    total = per_diem + mileage + receipt_adj
+
+    # Efficiency multiplier
+    eff = m / max(d, 1)
+    if 100 <= eff <= 220:
+        total *= 1.10  # 10% bonus
+    elif eff < 100 or eff > 300:
+        total *= 0.90  # 10% penalty
 
     # Ensure reimbursement at least equals receipts amount
     total = max(total, r)
