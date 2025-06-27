@@ -1,0 +1,13 @@
+Phase A – Baseline Evaluation
+=============================
+
+Legacy deterministic program: legacy_reimburse.py (commit initial)
+
+Metrics on public_cases.json (1,000 cases):
+
+• Exact matches (|err| < $0.01): 0 / 1,000
+• Mean Absolute Error (MAE): 288.03926
+
+Observation: The current placeholder rule is far from correct (> $288 avg error).
+
+Next steps: Phase B – Exploratory Data Analysis to uncover key breakpoints.
