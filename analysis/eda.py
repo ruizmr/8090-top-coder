@@ -12,6 +12,7 @@ FIG_DIR = Path(__file__).resolve().parent / 'figs'
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 FloatArray = NDArray[np.float64]
+IntArray = NDArray[np.int64]
 
 
 def load_cases(path: Path) -> pd.DataFrame:
@@ -68,7 +69,7 @@ def candidate_breakpoints(values: FloatArray, metric: FloatArray, num_breaks: in
 
     Simple heuristic: compute first derivative and pick the top-k points where derivative magnitude is high.
     """
-    order: NDArray[np.int_] = np.argsort(values)
+    order: IntArray = cast(IntArray, np.argsort(values))
     v_sorted: FloatArray = cast(FloatArray, values[order])
     m_sorted: FloatArray = cast(FloatArray, metric[order])
     # Finite differences on a smoothed curve (rolling mean)
@@ -80,7 +81,7 @@ def candidate_breakpoints(values: FloatArray, metric: FloatArray, num_breaks: in
     smooth_arr: FloatArray = cast(FloatArray, rolling_mean.to_numpy(dtype=float))  # type: ignore[attr-defined]
     deriv: FloatArray = cast(FloatArray, np.diff(smooth_arr) / np.diff(v_sorted))
     # Take absolute derivative and find top peaks, avoiding edges
-    peak_idx: NDArray[np.int_] = np.argpartition(-np.abs(deriv), num_breaks)[:num_breaks]
+    peak_idx: IntArray = cast(IntArray, np.argpartition(-np.abs(deriv), num_breaks)[:num_breaks])
     candidate_vals: FloatArray = cast(FloatArray, v_sorted[peak_idx + 1])  # +1 due to diff shift
     # Deduplicate & sort
     return sorted(set(int(round(v)) for v in candidate_vals))
